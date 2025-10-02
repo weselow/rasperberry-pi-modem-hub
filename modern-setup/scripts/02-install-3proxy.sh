@@ -165,8 +165,48 @@ rotate 30
 # Authentication mode
 auth cache strong
 
-# Proxy configurations will be added here by network configuration script
-# Format: proxy -n -a -p<PORT> -e<IP>
+# Proxy configurations
+# HTTP proxies on ports 8002-8020
+proxy -n -a -p8002
+proxy -n -a -p8003
+proxy -n -a -p8004
+proxy -n -a -p8005
+proxy -n -a -p8006
+proxy -n -a -p8007
+proxy -n -a -p8008
+proxy -n -a -p8009
+proxy -n -a -p8010
+proxy -n -a -p8011
+proxy -n -a -p8012
+proxy -n -a -p8013
+proxy -n -a -p8014
+proxy -n -a -p8015
+proxy -n -a -p8016
+proxy -n -a -p8017
+proxy -n -a -p8018
+proxy -n -a -p8019
+proxy -n -a -p8020
+
+# SOCKS proxies on ports 9002-9020
+socks -n -a -p9002
+socks -n -a -p9003
+socks -n -a -p9004
+socks -n -a -p9005
+socks -n -a -p9006
+socks -n -a -p9007
+socks -n -a -p9008
+socks -n -a -p9009
+socks -n -a -p9010
+socks -n -a -p9011
+socks -n -a -p9012
+socks -n -a -p9013
+socks -n -a -p9014
+socks -n -a -p9015
+socks -n -a -p9016
+socks -n -a -p9017
+socks -n -a -p9018
+socks -n -a -p9019
+socks -n -a -p9020
 
 EOF
 
