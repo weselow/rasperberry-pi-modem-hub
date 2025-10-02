@@ -56,8 +56,8 @@ get_gateway() {
     echo "${subnet}1"
 }
 
-# Получение номера порта для 3proxy на основе подсети
-get_proxy_port() {
+# Получение номера порта для HTTP прокси на основе подсети
+get_http_proxy_port() {
     local subnet="$1"
     local third_octet=$(echo "$subnet" | grep -oP '\d+\.\d+\.\K\d+')
 
@@ -65,6 +65,21 @@ get_proxy_port() {
         echo "800${third_octet}"
     elif [ "$third_octet" -ge 10 ] && [ "$third_octet" -le 20 ]; then
         echo "80${third_octet}"
+    else
+        # Для нестандартных подсетей возвращаем 0 (не настраиваем прокси)
+        echo "0"
+    fi
+}
+
+# Получение номера порта для SOCKS прокси на основе подсети
+get_socks_proxy_port() {
+    local subnet="$1"
+    local third_octet=$(echo "$subnet" | grep -oP '\d+\.\d+\.\K\d+')
+
+    if [ "$third_octet" -ge 2 ] && [ "$third_octet" -le 9 ]; then
+        echo "900${third_octet}"
+    elif [ "$third_octet" -ge 10 ] && [ "$third_octet" -le 20 ]; then
+        echo "90${third_octet}"
     else
         # Для нестандартных подсетей возвращаем 0 (не настраиваем прокси)
         echo "0"
@@ -139,14 +154,28 @@ update_3proxy_config() {
     local iface="$1"
     local ip="$2"
     local subnet=$(get_subnet "$ip")
-    local port=$(get_proxy_port "$subnet")
+    local http_port=$(get_http_proxy_port "$subnet")
+    local socks_port=$(get_socks_proxy_port "$subnet")
+    local expected_ip="${subnet}100"
 
-    if [ "$port" = "0" ]; then
+    if [ "$http_port" = "0" ] || [ "$socks_port" = "0" ]; then
         log "Подсеть $subnet не требует настройки прокси (нестандартная подсеть)"
         return 0
     fi
 
-    log "Обновление 3proxy конфигурации: port=$port, ip=$ip"
+    # Проверяем, совпадает ли IP со стандартным (192.168.X.100)
+    if [ "$ip" = "$expected_ip" ]; then
+        log "IP $ip соответствует ожидаемому, конфигурация 3proxy уже актуальна (не требует перезагрузки)"
+
+        # Сохраняем информацию о портах
+        echo "$http_port" > "${STATE_DIR}/${iface}.http_port"
+        echo "$socks_port" > "${STATE_DIR}/${iface}.socks_port"
+
+        return 0
+    fi
+
+    # IP отличается от стандартного - обновляем конфигурацию
+    log "IP $ip отличается от ожидаемого $expected_ip - обновление конфигурации 3proxy..."
 
     # Создаём временный файл
     local temp_cfg=$(mktemp)
@@ -154,17 +183,22 @@ update_3proxy_config() {
     # Удаляем старые записи для этой подсети
     grep -vE "\-e${subnet}[0-9]+" "$PROXY_CFG" > "$temp_cfg" || true
 
-    # Добавляем новую запись
-    echo "proxy -n -a -p${port} -e${ip}" >> "$temp_cfg"
+    # Добавляем новые записи (HTTP и SOCKS) с актуальным IP
+    echo "proxy -n -a -p${http_port} -e${ip}" >> "$temp_cfg"
+    echo "socks -n -a -p${socks_port} -e${ip}" >> "$temp_cfg"
 
     # Заменяем конфигурацию
     mv "$temp_cfg" "$PROXY_CFG"
     chmod 644 "$PROXY_CFG"
 
-    log "3proxy конфигурация обновлена: proxy -n -a -p${port} -e${ip}"
+    log "3proxy конфигурация обновлена: proxy -p${http_port} -e${ip}, socks -p${socks_port} -e${ip}"
 
-    # Сохраняем информацию о порте
-    echo "$port" > "${STATE_DIR}/${iface}.port"
+    # Сохраняем информацию о портах
+    echo "$http_port" > "${STATE_DIR}/${iface}.http_port"
+    echo "$socks_port" > "${STATE_DIR}/${iface}.socks_port"
+
+    # Флаг для перезагрузки прокси
+    echo "1" > "${STATE_DIR}/${iface}.needs_reload"
 }
 
 # Удаление из конфигурации 3proxy
@@ -244,8 +278,14 @@ handle_add() {
     # Обновляем конфигурацию 3proxy
     update_3proxy_config "$iface" "$ip"
 
-    # Перезапускаем 3proxy
-    restart_3proxy
+    # Перезапускаем 3proxy только если требуется
+    if [ -f "${STATE_DIR}/${iface}.needs_reload" ]; then
+        restart_3proxy
+        rm -f "${STATE_DIR}/${iface}.needs_reload"
+        log "3proxy перезагружен из-за нестандартного IP"
+    else
+        log "3proxy не требует перезагрузки"
+    fi
 
     log "Интерфейс $iface успешно настроен"
     log "========================================="

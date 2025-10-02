@@ -68,13 +68,8 @@ install_3proxy() {
     if [ -f "$PROXY_BIN" ]; then
         local installed_version=$($PROXY_BIN --version 2>&1 | head -n1 || echo "unknown")
         log_warn "3proxy уже установлен: $installed_version"
-
-        read -p "Переустановить 3proxy? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Пропускаем установку 3proxy"
-            return 0
-        fi
+        log_info "Пропускаем установку 3proxy (для переустановки удалите $PROXY_BIN)"
+        return 0
     fi
 
     log_info "Загрузка 3proxy ${PROXY_VERSION}..."
@@ -82,15 +77,35 @@ install_3proxy() {
     cd /tmp
     rm -rf "3proxy-${PROXY_VERSION}" "3proxy-${PROXY_VERSION}.tar.gz"
 
-    wget --no-check-certificate "https://github.com/z3APA3A/3proxy/archive/${PROXY_VERSION}.tar.gz" \
-        -O "3proxy-${PROXY_VERSION}.tar.gz"
+    # Правильная ссылка на релиз GitHub
+    local download_url="https://github.com/z3APA3A/3proxy/archive/refs/tags/${PROXY_VERSION}.tar.gz"
+
+    if ! wget --quiet --show-progress "$download_url" -O "3proxy-${PROXY_VERSION}.tar.gz"; then
+        log_error "Ошибка загрузки 3proxy с $download_url"
+        exit 1
+    fi
 
     log_info "Распаковка и компиляция 3proxy..."
-    tar xzf "3proxy-${PROXY_VERSION}.tar.gz"
+
+    if ! tar xzf "3proxy-${PROXY_VERSION}.tar.gz"; then
+        log_error "Ошибка распаковки архива"
+        exit 1
+    fi
+
     cd "3proxy-${PROXY_VERSION}"
 
     # Компиляция для Linux (работает и на Alpine с musl)
-    make -f Makefile.Linux
+    log_info "Компиляция 3proxy (это может занять несколько минут)..."
+    if ! make -f Makefile.Linux; then
+        log_error "Ошибка компиляции 3proxy"
+        exit 1
+    fi
+
+    # Проверка что бинарник создан
+    if [ ! -f "bin/3proxy" ]; then
+        log_error "Бинарный файл bin/3proxy не был создан после компиляции"
+        exit 1
+    fi
 
     log_info "Установка 3proxy..."
     mkdir -p "$PROXY_DIR"
@@ -159,8 +174,85 @@ rotate 30
 # Authentication mode
 auth cache strong
 
-# Proxy configurations will be added here by network configuration script
-# Format: proxy -n -a -p<PORT> -e<IP>
+# Static proxy configurations for standard modem IPs (192.168.X.100)
+# HTTP proxies on ports 8002-8020, SOCKS proxies on ports 9002-9020
+# These will be updated dynamically if actual IP differs from 192.168.X.100
+
+# Subnet 192.168.2.x
+proxy -n -a -p8002 -e192.168.2.100
+socks -n -a -p9002 -e192.168.2.100
+
+# Subnet 192.168.3.x
+proxy -n -a -p8003 -e192.168.3.100
+socks -n -a -p9003 -e192.168.3.100
+
+# Subnet 192.168.4.x
+proxy -n -a -p8004 -e192.168.4.100
+socks -n -a -p9004 -e192.168.4.100
+
+# Subnet 192.168.5.x
+proxy -n -a -p8005 -e192.168.5.100
+socks -n -a -p9005 -e192.168.5.100
+
+# Subnet 192.168.6.x
+proxy -n -a -p8006 -e192.168.6.100
+socks -n -a -p9006 -e192.168.6.100
+
+# Subnet 192.168.7.x
+proxy -n -a -p8007 -e192.168.7.100
+socks -n -a -p9007 -e192.168.7.100
+
+# Subnet 192.168.8.x
+proxy -n -a -p8008 -e192.168.8.100
+socks -n -a -p9008 -e192.168.8.100
+
+# Subnet 192.168.9.x
+proxy -n -a -p8009 -e192.168.9.100
+socks -n -a -p9009 -e192.168.9.100
+
+# Subnet 192.168.10.x
+proxy -n -a -p8010 -e192.168.10.100
+socks -n -a -p9010 -e192.168.10.100
+
+# Subnet 192.168.11.x
+proxy -n -a -p8011 -e192.168.11.100
+socks -n -a -p9011 -e192.168.11.100
+
+# Subnet 192.168.12.x
+proxy -n -a -p8012 -e192.168.12.100
+socks -n -a -p9012 -e192.168.12.100
+
+# Subnet 192.168.13.x
+proxy -n -a -p8013 -e192.168.13.100
+socks -n -a -p9013 -e192.168.13.100
+
+# Subnet 192.168.14.x
+proxy -n -a -p8014 -e192.168.14.100
+socks -n -a -p9014 -e192.168.14.100
+
+# Subnet 192.168.15.x
+proxy -n -a -p8015 -e192.168.15.100
+socks -n -a -p9015 -e192.168.15.100
+
+# Subnet 192.168.16.x
+proxy -n -a -p8016 -e192.168.16.100
+socks -n -a -p9016 -e192.168.16.100
+
+# Subnet 192.168.17.x
+proxy -n -a -p8017 -e192.168.17.100
+socks -n -a -p9017 -e192.168.17.100
+
+# Subnet 192.168.18.x
+proxy -n -a -p8018 -e192.168.18.100
+socks -n -a -p9018 -e192.168.18.100
+
+# Subnet 192.168.19.x
+proxy -n -a -p8019 -e192.168.19.100
+socks -n -a -p9019 -e192.168.19.100
+
+# Subnet 192.168.20.x
+proxy -n -a -p8020 -e192.168.20.100
+socks -n -a -p9020 -e192.168.20.100
 
 EOF
 
