@@ -1,0 +1,17 @@
+[Unit]
+Description=Modem Interface Sync Service
+Documentation=https://github.com/weselow/linux-scripts
+After=network.target systemd-networkd.service NetworkManager.service
+Wants=3proxy.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/modem-sync.sh
+RemainAfterExit=yes
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
