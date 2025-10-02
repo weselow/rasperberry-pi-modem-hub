@@ -62,7 +62,7 @@ configure_routing_tables() {
     for ((i=1; i <= MAX_MODEMS; i++)); do
         local table_id=$((i + 11))
         local table_name="modemeth${i}"
-        add_routing_table "$table_id" "$table_name" && ((changes++))
+        add_routing_table "$table_id" "$table_name" && changes=$((changes+1))
     done
 
     # Создаём таблицы для usb интерфейсов (usb0-usb20)
@@ -70,7 +70,7 @@ configure_routing_tables() {
     for ((i=0; i <= MAX_MODEMS; i++)); do
         local table_id=$((i + 32))
         local table_name="modemusb${i}"
-        add_routing_table "$table_id" "$table_name" && ((changes++))
+        add_routing_table "$table_id" "$table_name" && changes=$((changes+1))
     done
 
     if [ $changes -gt 0 ]; then

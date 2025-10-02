@@ -64,21 +64,21 @@ configure_limits_conf() {
 
     local changes=0
 
-    add_line_if_missing "$LIMITS_CONF" "* soft nproc 102400" "soft nproc для всех" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "* hard nproc 1000000" "hard nproc для всех" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "* soft nofile 1048576" "soft nofile для всех" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "* hard nofile 1048576" "hard nofile для всех" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "* - memlock unlimited" "memlock для всех" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "* soft sigpending 102400" "soft sigpending для всех" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "* hard sigpending 102400" "hard sigpending для всех" && ((changes++))
+    add_line_if_missing "$LIMITS_CONF" "* soft nproc 102400" "soft nproc для всех" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "* hard nproc 1000000" "hard nproc для всех" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "* soft nofile 1048576" "soft nofile для всех" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "* hard nofile 1048576" "hard nofile для всех" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "* - memlock unlimited" "memlock для всех" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "* soft sigpending 102400" "soft sigpending для всех" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "* hard sigpending 102400" "hard sigpending для всех" && changes=$((changes+1))
 
-    add_line_if_missing "$LIMITS_CONF" "root - memlock unlimited" "root memlock" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "root soft nofile 1048576" "root soft nofile" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "root hard nofile 1048576" "root hard nofile" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "root soft nproc 102400" "root soft nproc" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "root hard nproc 1000000" "root hard nproc" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "root soft sigpending 102400" "root soft sigpending" && ((changes++))
-    add_line_if_missing "$LIMITS_CONF" "root hard sigpending 102400" "root hard sigpending" && ((changes++))
+    add_line_if_missing "$LIMITS_CONF" "root - memlock unlimited" "root memlock" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "root soft nofile 1048576" "root soft nofile" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "root hard nofile 1048576" "root hard nofile" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "root soft nproc 102400" "root soft nproc" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "root hard nproc 1000000" "root hard nproc" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "root soft sigpending 102400" "root soft sigpending" && changes=$((changes+1))
+    add_line_if_missing "$LIMITS_CONF" "root hard sigpending 102400" "root hard sigpending" && changes=$((changes+1))
 
     if [ $changes -gt 0 ]; then
         log_info "Внесено изменений в ${LIMITS_CONF}: $changes"
@@ -118,14 +118,14 @@ configure_systemd_system() {
         log_info "Добавлена секция [Manager]"
     fi
 
-    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitDATA=infinity" "DefaultLimitDATA" && ((changes++))
-    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitSTACK=infinity" "DefaultLimitSTACK" && ((changes++))
-    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitCORE=infinity" "DefaultLimitCORE" && ((changes++))
-    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitRSS=infinity" "DefaultLimitRSS" && ((changes++))
-    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitNOFILE=500000" "DefaultLimitNOFILE" && ((changes++))
-    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitAS=infinity" "DefaultLimitAS" && ((changes++))
-    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitNPROC=500000" "DefaultLimitNPROC" && ((changes++))
-    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitMEMLOCK=infinity" "DefaultLimitMEMLOCK" && ((changes++))
+    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitDATA=infinity" "DefaultLimitDATA" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitSTACK=infinity" "DefaultLimitSTACK" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitCORE=infinity" "DefaultLimitCORE" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitRSS=infinity" "DefaultLimitRSS" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitNOFILE=500000" "DefaultLimitNOFILE" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitAS=infinity" "DefaultLimitAS" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitNPROC=500000" "DefaultLimitNPROC" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_SYSTEM_CONF" "DefaultLimitMEMLOCK=infinity" "DefaultLimitMEMLOCK" && changes=$((changes+1))
 
     if [ $changes -gt 0 ]; then
         log_info "Внесено изменений в ${SYSTEMD_SYSTEM_CONF}: $changes"
@@ -148,14 +148,14 @@ configure_systemd_user() {
         log_info "Добавлена секция [Manager]"
     fi
 
-    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitDATA=infinity" "DefaultLimitDATA" && ((changes++))
-    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitSTACK=infinity" "DefaultLimitSTACK" && ((changes++))
-    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitCORE=infinity" "DefaultLimitCORE" && ((changes++))
-    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitRSS=infinity" "DefaultLimitRSS" && ((changes++))
-    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitNOFILE=500000" "DefaultLimitNOFILE" && ((changes++))
-    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitAS=infinity" "DefaultLimitAS" && ((changes++))
-    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitNPROC=500000" "DefaultLimitNPROC" && ((changes++))
-    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitMEMLOCK=infinity" "DefaultLimitMEMLOCK" && ((changes++))
+    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitDATA=infinity" "DefaultLimitDATA" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitSTACK=infinity" "DefaultLimitSTACK" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitCORE=infinity" "DefaultLimitCORE" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitRSS=infinity" "DefaultLimitRSS" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitNOFILE=500000" "DefaultLimitNOFILE" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitAS=infinity" "DefaultLimitAS" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitNPROC=500000" "DefaultLimitNPROC" && changes=$((changes+1))
+    add_line_if_missing "$SYSTEMD_USER_CONF" "DefaultLimitMEMLOCK=infinity" "DefaultLimitMEMLOCK" && changes=$((changes+1))
 
     if [ $changes -gt 0 ]; then
         log_info "Внесено изменений в ${SYSTEMD_USER_CONF}: $changes"
