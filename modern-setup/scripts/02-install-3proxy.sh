@@ -172,14 +172,13 @@ nscache 65536
 timeouts 1 5 30 60 180 1800 15 60
 
 # Connection limits
-maxconn 1000000
+maxconn 200000
 noforce
 
 # User authentication
 users viking01:CL:A000000a
 
 # Logging
-daemon
 log ${PROXY_LOG_DIR}/3proxy.log D
 logformat "- +_L%t.%. %N.%p %E %U %C:%c %R:%r %O %I %h %T"
 rotate 30
