@@ -96,8 +96,11 @@ install_3proxy() {
 
     # Компиляция для Linux с флагами совместимости (без ODBC)
     log_info "Компиляция 3proxy (это может занять несколько минут)..."
-    export CFLAGS="-Wno-error=incompatible-pointer-types -DNOODBC"
-    if ! make -f Makefile.Linux CFLAGS="$CFLAGS"; then
+
+    # Добавляем флаги в Makefile.Linux перед компиляцией
+    sed -i 's/CFLAGS =/CFLAGS = -Wno-error=incompatible-pointer-types/' Makefile.Linux
+
+    if ! make -f Makefile.Linux; then
         log_error "Ошибка компиляции 3proxy"
         exit 1
     fi
