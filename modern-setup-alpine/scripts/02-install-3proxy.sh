@@ -94,9 +94,10 @@ install_3proxy() {
 
     cd "3proxy-${PROXY_VERSION}"
 
-    # Компиляция для Linux (работает и на Alpine с musl)
+    # Компиляция для Linux с флагами совместимости
     log_info "Компиляция 3proxy (это может занять несколько минут)..."
-    if ! make -f Makefile.Linux; then
+    export CFLAGS="-Wno-error=incompatible-pointer-types"
+    if ! make -f Makefile.Linux CFLAGS="$CFLAGS"; then
         log_error "Ошибка компиляции 3proxy"
         exit 1
     fi

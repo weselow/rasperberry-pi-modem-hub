@@ -9,6 +9,9 @@ set -e
 SCRIPT_NAME="02-install-3proxy"
 PROXY_VERSION="0.9.4"
 PROXY_USER="proxy3"
+
+# Флаги компиляции для совместимости с новыми версиями GCC
+export CFLAGS="-Wno-error=incompatible-pointer-types"
 PROXY_DIR="/etc/3proxy"
 PROXY_CFG="$PROXY_DIR/3proxy.cfg"
 PROXY_BIN="/usr/local/bin/3proxy"
@@ -101,8 +104,10 @@ install_3proxy() {
 
     cd "3proxy-${PROXY_VERSION}"
 
+    # Компиляция для Linux с флагами совместимости
     log_info "Компиляция 3proxy (это может занять несколько минут)..."
-    if ! make -f Makefile.Linux; then
+    export CFLAGS="-Wno-error=incompatible-pointer-types"
+    if ! make -f Makefile.Linux CFLAGS="$CFLAGS"; then
         log_error "Ошибка компиляции 3proxy"
         exit 1
     fi

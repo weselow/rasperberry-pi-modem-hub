@@ -142,7 +142,7 @@ configure_existing_interfaces() {
         if ip addr show "$iface" | grep -q 'inet '; then
             log_info "Найден активный интерфейс: $iface"
             "$HELPER_SCRIPT" add "$iface" || log_warn "Не удалось настроить $iface"
-            ((configured++))
+            configured=$((configured+1))
         fi
     done
 
@@ -151,7 +151,7 @@ configure_existing_interfaces() {
         if ip addr show "$iface" | grep -q 'inet '; then
             log_info "Найден активный интерфейс: $iface"
             "$HELPER_SCRIPT" add "$iface" || log_warn "Не удалось настроить $iface"
-            ((configured++))
+            configured=$((configured+1))
         fi
     done
 
@@ -182,14 +182,8 @@ main() {
     log_info "  3. Перезапускаться 3proxy для применения изменений"
     log_info ""
 
-    # Спрашиваем пользователя, хочет ли он настроить существующие интерфейсы
-    read -p "Настроить существующие интерфейсы сейчас? (Y/n): " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Nn]$ ]]; then
-        configure_existing_interfaces
-    else
-        log_info "Пропуск настройки существующих интерфейсов"
-    fi
+    # Автоматически настраиваем существующие интерфейсы (без интерактивного запроса)
+    configure_existing_interfaces
 
     log_info ""
     log_info "Проверить логи можно командой:"
