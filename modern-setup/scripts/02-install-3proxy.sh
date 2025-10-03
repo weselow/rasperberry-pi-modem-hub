@@ -180,7 +180,6 @@ users viking01:CL:A000000a
 
 # Logging
 daemon
-pidfile /var/run/3proxy.pid
 log ${PROXY_LOG_DIR}/3proxy.log D
 logformat "- +_L%t.%. %N.%p %E %U %C:%c %R:%r %O %I %h %T"
 rotate 30
@@ -288,10 +287,8 @@ After=network.target
 Documentation=https://github.com/z3APA3A/3proxy
 
 [Service]
-Type=forking
-PIDFile=/var/run/3proxy.pid
+Type=simple
 ExecStart=${PROXY_BIN} ${PROXY_CFG}
-ExecReload=/bin/kill -HUP \$MAINPID
 Restart=on-failure
 RestartSec=5s
 
