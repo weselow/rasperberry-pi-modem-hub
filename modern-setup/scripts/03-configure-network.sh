@@ -175,10 +175,11 @@ configure_networkmanager() {
         cat > "$nm_modem_conf" << 'EOF'
 # Настройка для интерфейсов модемов
 # Отключаем автоматический default route для модемов
+# ВАЖНО: eth0 исключен для сохранения доступа к Raspberry Pi
 
 [connection]
-# Применяем к интерфейсам ethX и usbX
-match-device=interface-name:eth*,usb*
+# Применяем к интерфейсам eth1-eth20 и usb0-usb20 (eth0 исключен!)
+match-device=interface-name:eth[1-9],eth1[0-9],eth20,usb*
 
 [ipv4]
 never-default=true
