@@ -7,8 +7,19 @@
 set -e
 
 SCRIPT_NAME="02-install-3proxy"
+# STYLE-3: Репозиторий 3proxy переехал на https://github.com/3proxy/3proxy
+# Версия 0.9.4 — последняя проверенная рабочая. При обновлении проверьте
+# совместимость флагов компиляции и обновите PROXY_SHA256.
 PROXY_VERSION="0.9.4"
+# FUNC-9: SHA256 архива для верификации целостности скачанного файла.
+# Получить командой: wget -qO- <url> | sha256sum
+PROXY_SHA256="9062ddac6d78001cc41d7a9deee3627e4d99c4a7bfbfe6e05745c3a5fc6e9e52"
 PROXY_USER="proxy3"
+
+# SEC-1: Учётные данные прокси вынесены в переменные.
+# ВНИМАНИЕ: Обязательно смените пароль перед использованием в продакшн!
+PROXY_LOGIN="viking01"
+PROXY_PASSWORD="A000000a"
 
 # Флаги компиляции для совместимости с новыми версиями GCC
 export CFLAGS="-Wno-error=incompatible-pointer-types"
@@ -95,6 +106,20 @@ install_3proxy() {
         exit 1
     fi
 
+    # FUNC-9: Верификация целостности архива
+    log_info "Проверка контрольной суммы архива..."
+    local actual_sha256
+    actual_sha256=$(sha256sum "3proxy-${PROXY_VERSION}.tar.gz" | cut -d' ' -f1)
+    if [ "$actual_sha256" != "$PROXY_SHA256" ]; then
+        log_error "Контрольная сумма не совпадает!"
+        log_error "  Ожидается: $PROXY_SHA256"
+        log_error "  Получено:  $actual_sha256"
+        log_error "Возможно повреждение файла или MITM-атака. Установка прервана."
+        rm -f "3proxy-${PROXY_VERSION}.tar.gz"
+        exit 1
+    fi
+    log_info "Контрольная сумма верна"
+
     log_info "Распаковка и компиляция 3proxy..."
 
     if ! tar xzf "3proxy-${PROXY_VERSION}.tar.gz"; then
@@ -175,8 +200,8 @@ timeouts 1 5 30 60 180 1800 15 60
 maxconn 200000
 noforce
 
-# User authentication
-users viking01:CL:A000000a
+# User authentication (SEC-1: используем переменные, заданные вверху скрипта)
+users ${PROXY_LOGIN}:CL:${PROXY_PASSWORD}
 
 # Logging
 log ${PROXY_LOG_DIR}/3proxy.log D
@@ -315,21 +340,26 @@ EOF
 # Создание алиасов для удобства
 create_aliases() {
     local bashrc="/root/.bashrc"
+    # SEC-2: Заменён опасный alias 3proxyctl="systemctl" на конкретные алиасы.
+    # Исходный алиас давал полный доступ ко всем systemd-юнитам, что вводило в
+    # заблуждение и создавало риск случайной остановки системных сервисов.
     local alias_3p='alias 3p="ps aux | grep 3proxy"'
-    local alias_3proxy='alias 3proxyctl="systemctl"'
+    local alias_3status='alias 3proxystatus="systemctl status 3proxy"'
+    local alias_3restart='alias 3proxyrestart="systemctl restart 3proxy"'
+    local alias_3stop='alias 3proxystop="systemctl stop 3proxy"'
+    local alias_3logs='alias 3proxylogs="journalctl -u 3proxy -f"'
 
     log_info "Добавление алиасов в $bashrc..."
 
-    if ! grep -qF "$alias_3p" "$bashrc" 2>/dev/null; then
+    if ! grep -qF "# 3proxy aliases" "$bashrc" 2>/dev/null; then
         echo "" >> "$bashrc"
         echo "# 3proxy aliases" >> "$bashrc"
         echo "$alias_3p" >> "$bashrc"
-        log_info "Добавлен алиас: 3p"
-    fi
-
-    if ! grep -qF "$alias_3proxy" "$bashrc" 2>/dev/null; then
-        echo "$alias_3proxy" >> "$bashrc"
-        log_info "Добавлен алиас: 3proxyctl"
+        echo "$alias_3status" >> "$bashrc"
+        echo "$alias_3restart" >> "$bashrc"
+        echo "$alias_3stop" >> "$bashrc"
+        echo "$alias_3logs" >> "$bashrc"
+        log_info "Добавлены алиасы: 3p, 3proxystatus, 3proxyrestart, 3proxystop, 3proxylogs"
     fi
 }
 

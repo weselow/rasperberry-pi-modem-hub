@@ -192,6 +192,36 @@ EOF
         log_info "Создана конфигурация: $nm_modem_conf"
         log_warn "Требуется перезапустить NetworkManager: systemctl restart NetworkManager"
     fi
+
+    # FUNC-5: conf.d влияет только на новые профили. Патчим уже существующие,
+    # чтобы never-default применился немедленно без пересоздания профилей.
+    if command -v nmcli >/dev/null 2>&1; then
+        log_info "Обновление существующих профилей NetworkManager для модемных интерфейсов..."
+        local patched=0
+        for i in $(seq 1 20); do
+            local conn_name
+            conn_name=$(nmcli -t -f NAME,DEVICE con show 2>/dev/null | grep ":eth${i}$" | cut -d: -f1 || true)
+            if [ -n "$conn_name" ]; then
+                nmcli connection modify "$conn_name" \
+                    ipv4.never-default yes ipv4.ignore-auto-dns yes \
+                    2>/dev/null && patched=$((patched+1)) || true
+            fi
+        done
+        for i in $(seq 0 20); do
+            local conn_name
+            conn_name=$(nmcli -t -f NAME,DEVICE con show 2>/dev/null | grep ":usb${i}$" | cut -d: -f1 || true)
+            if [ -n "$conn_name" ]; then
+                nmcli connection modify "$conn_name" \
+                    ipv4.never-default yes ipv4.ignore-auto-dns yes \
+                    2>/dev/null && patched=$((patched+1)) || true
+            fi
+        done
+        if [ $patched -gt 0 ]; then
+            log_info "Обновлено существующих профилей NM: $patched"
+        else
+            log_info "Существующих профилей NM для модемных интерфейсов не найдено"
+        fi
+    fi
 }
 
 # Настройка для dhcpcd (старый метод, для совместимости)

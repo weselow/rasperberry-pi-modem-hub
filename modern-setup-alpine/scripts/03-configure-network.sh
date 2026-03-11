@@ -93,61 +93,40 @@ configure_alpine_network() {
         return 0
     fi
 
-    log_info "Добавление настроек для интерфейсов модемов..."
+    log_info "Добавление настроек для интерфейсов модемов (eth1-eth20, usb0-usb20)..."
 
-    cat >> "$NETWORK_INTERFACES" << 'EOF'
+    # FUNC-6: Генерируем все 20 интерфейсов через цикл вместо ручного перечисления.
+    # Ранее добавлялись только первые 5, остальные 15 не работали.
 
-# Modem interfaces auto-configured by modern-setup-alpine
-# These interfaces use DHCP but don't set default gateway
+    echo "" >> "$NETWORK_INTERFACES"
+    echo "# Modem interfaces auto-configured by modern-setup-alpine" >> "$NETWORK_INTERFACES"
+    echo "# These interfaces use DHCP but don't set default gateway" >> "$NETWORK_INTERFACES"
 
-# eth1-eth20 interfaces
-auto eth1
-iface eth1 inet dhcp
-    post-up ip route del default dev eth1 2>/dev/null || true
+    # eth1-eth20
+    echo "" >> "$NETWORK_INTERFACES"
+    echo "# eth1-eth20 interfaces" >> "$NETWORK_INTERFACES"
+    for i in $(seq 1 "$MAX_MODEMS"); do
+        cat >> "$NETWORK_INTERFACES" << EOF
 
-auto eth2
-iface eth2 inet dhcp
-    post-up ip route del default dev eth2 2>/dev/null || true
-
-auto eth3
-iface eth3 inet dhcp
-    post-up ip route del default dev eth3 2>/dev/null || true
-
-auto eth4
-iface eth4 inet dhcp
-    post-up ip route del default dev eth4 2>/dev/null || true
-
-auto eth5
-iface eth5 inet dhcp
-    post-up ip route del default dev eth5 2>/dev/null || true
-
-# usb0-usb20 interfaces
-auto usb0
-iface usb0 inet dhcp
-    post-up ip route del default dev usb0 2>/dev/null || true
-
-auto usb1
-iface usb1 inet dhcp
-    post-up ip route del default dev usb1 2>/dev/null || true
-
-auto usb2
-iface usb2 inet dhcp
-    post-up ip route del default dev usb2 2>/dev/null || true
-
-auto usb3
-iface usb3 inet dhcp
-    post-up ip route del default dev usb3 2>/dev/null || true
-
-auto usb4
-iface usb4 inet dhcp
-    post-up ip route del default dev usb4 2>/dev/null || true
-
-# Add more interfaces as needed up to eth20/usb20
+auto eth${i}
+iface eth${i} inet dhcp
+    post-up ip route del default dev eth${i} 2>/dev/null || true
 EOF
+    done
 
-    log_info "Настройки интерфейсов добавлены в $NETWORK_INTERFACES"
-    log_warn "Примечание: добавлены только первые 5 интерфейсов каждого типа"
-    log_warn "Добавьте остальные по аналогии если нужно"
+    # usb0-usb20
+    echo "" >> "$NETWORK_INTERFACES"
+    echo "# usb0-usb20 interfaces" >> "$NETWORK_INTERFACES"
+    for i in $(seq 0 "$MAX_MODEMS"); do
+        cat >> "$NETWORK_INTERFACES" << EOF
+
+auto usb${i}
+iface usb${i} inet dhcp
+    post-up ip route del default dev usb${i} 2>/dev/null || true
+EOF
+    done
+
+    log_info "Настройки интерфейсов добавлены в $NETWORK_INTERFACES (eth1-eth${MAX_MODEMS}, usb0-usb${MAX_MODEMS})"
 }
 
 # Настройка udhcpc (Alpine DHCP client)

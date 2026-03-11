@@ -62,6 +62,23 @@ add_line_if_missing() {
 configure_limits_conf() {
     log_info "Настройка ${LIMITS_CONF}..."
 
+    # STYLE-2: Удаляем наши старые записи перед добавлением, чтобы при повторном
+    # запуске скрипта не накапливались дубли с разными значениями в файле.
+    sed -i '/^\* soft nproc /d'       "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^\* hard nproc /d'       "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^\* soft nofile /d'      "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^\* hard nofile /d'      "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^\* - memlock /d'        "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^\* soft sigpending /d'  "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^\* hard sigpending /d'  "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^root soft nproc /d'     "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^root hard nproc /d'     "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^root soft nofile /d'    "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^root hard nofile /d'    "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^root - memlock /d'      "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^root soft sigpending /d' "$LIMITS_CONF" 2>/dev/null || true
+    sed -i '/^root hard sigpending /d' "$LIMITS_CONF" 2>/dev/null || true
+
     local changes=0
 
     add_line_if_missing "$LIMITS_CONF" "* soft nproc 102400" "soft nproc для всех" && changes=$((changes+1))

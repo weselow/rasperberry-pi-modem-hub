@@ -1,8 +1,10 @@
 [Unit]
 Description=Modem Interface Sync Service
 Documentation=https://github.com/weselow/linux-scripts
-After=network.target systemd-networkd.service NetworkManager.service
-Wants=3proxy.service
+# FUNC-8: network-online.target гарантирует, что интерфейсы получили IP от DHCP.
+# network.target означает только что интерфейсы подняты, но DHCP может ещё не завершиться.
+After=network-online.target systemd-networkd.service NetworkManager.service
+Wants=network-online.target 3proxy.service
 
 [Service]
 Type=oneshot

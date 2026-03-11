@@ -11,7 +11,10 @@ LOGFILE="/var/log/modem-handler.log"
 HANDLER="/usr/local/bin/modem-interface-handler.sh"
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$SCRIPT_NAME] $1" | tee -a "$LOGFILE"
+    # FUNC-7: Убран tee — он писал в файл И в stdout, а stdout при вызове из
+    # systemd-сервиса тоже перенаправлялся в тот же файл через >> "$LOGFILE".
+    # Итог: каждая строка появлялась в логе дважды.
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$SCRIPT_NAME] $1" >> "$LOGFILE"
 }
 
 main() {

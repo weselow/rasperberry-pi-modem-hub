@@ -8,7 +8,9 @@
 #   $2 - INTERFACE (eth1, usb0, etc.)
 #
 
-set -e
+# FUNC-2: Убран set -e — скрипт вызывается из udev, который не логирует stderr
+# и убивает процесс при падении без каких-либо сообщений об ошибке.
+# Используем явную обработку ошибок с логированием.
 
 SCRIPT_NAME="modem-handler"
 ACTION="$1"
@@ -16,6 +18,10 @@ INTERFACE="$2"
 LOGFILE="/var/log/modem-handler.log"
 PROXY_CFG="/etc/3proxy/3proxy.cfg"
 STATE_DIR="/var/run/modem-state"
+
+# BUG-1: Файл блокировки для предотвращения race condition при одновременном
+# подключении нескольких модемов и конкурентной записи в 3proxy.cfg
+LOCK_FILE="/var/lock/3proxy-cfg.lock"
 
 # Создаём директорию для хранения состояний
 mkdir -p "$STATE_DIR"
@@ -32,7 +38,8 @@ get_interface_ip() {
     local attempt=0
 
     while [ $attempt -lt $max_attempts ]; do
-        local ip=$(ip -4 addr show "$iface" 2>/dev/null | grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+' | head -n1)
+        local ip
+        ip=$(ip -4 addr show "$iface" 2>/dev/null | grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+' | head -n1)
         if [ -n "$ip" ]; then
             echo "$ip"
             return 0
@@ -59,14 +66,14 @@ get_gateway() {
 # Получение номера порта для HTTP прокси на основе подсети
 get_http_proxy_port() {
     local subnet="$1"
-    local third_octet=$(echo "$subnet" | grep -oP '\d+\.\d+\.\K\d+')
+    local third_octet
+    third_octet=$(echo "$subnet" | grep -oP '\d+\.\d+\.\K\d+')
 
     if [ "$third_octet" -ge 2 ] && [ "$third_octet" -le 9 ]; then
         echo "800${third_octet}"
     elif [ "$third_octet" -ge 10 ] && [ "$third_octet" -le 20 ]; then
         echo "80${third_octet}"
     else
-        # Для нестандартных подсетей возвращаем 0 (не настраиваем прокси)
         echo "0"
     fi
 }
@@ -74,14 +81,14 @@ get_http_proxy_port() {
 # Получение номера порта для SOCKS прокси на основе подсети
 get_socks_proxy_port() {
     local subnet="$1"
-    local third_octet=$(echo "$subnet" | grep -oP '\d+\.\d+\.\K\d+')
+    local third_octet
+    third_octet=$(echo "$subnet" | grep -oP '\d+\.\d+\.\K\d+')
 
     if [ "$third_octet" -ge 2 ] && [ "$third_octet" -le 9 ]; then
         echo "900${third_octet}"
     elif [ "$third_octet" -ge 10 ] && [ "$third_octet" -le 20 ]; then
         echo "90${third_octet}"
     else
-        # Для нестандартных подсетей возвращаем 0 (не настраиваем прокси)
         echo "0"
     fi
 }
@@ -96,66 +103,73 @@ get_routing_table() {
 setup_routing() {
     local iface="$1"
     local ip="$2"
-    local subnet=$(get_subnet "$ip")
-    local gateway=$(get_gateway "$subnet")
-    local table=$(get_routing_table "$iface")
+    local subnet
+    subnet=$(get_subnet "$ip")
+    local gateway
+    gateway=$(get_gateway "$subnet")
+    local table
+    table=$(get_routing_table "$iface")
 
     log "Настройка маршрутизации: IP=$ip, subnet=$subnet, gateway=$gateway, table=$table"
 
-    # Удаляем существующие правила для этого IP (на случай реконфигурации)
     ip rule del from "$ip" 2>/dev/null || true
-
-    # Удаляем существующие маршруты в таблице
     ip route flush table "$table" 2>/dev/null || true
 
-    # Добавляем default route в таблицу
-    ip route add default via "$gateway" dev "$iface" table "$table"
+    if ! ip route add default via "$gateway" dev "$iface" table "$table"; then
+        log "ОШИБКА: Не удалось добавить маршрут default via $gateway dev $iface table $table"
+        return 1
+    fi
     log "Добавлен маршрут: default via $gateway dev $iface table $table"
 
-    # Добавляем правило маршрутизации
-    ip rule add from "$ip" table "$table"
+    if ! ip rule add from "$ip" table "$table"; then
+        log "ОШИБКА: Не удалось добавить правило from $ip table $table"
+        ip route flush table "$table" 2>/dev/null || true
+        return 1
+    fi
     log "Добавлено правило: from $ip table $table"
 
-    # Сохраняем состояние интерфейса
     echo "$ip" > "${STATE_DIR}/${iface}.ip"
     echo "$subnet" > "${STATE_DIR}/${iface}.subnet"
     echo "$gateway" > "${STATE_DIR}/${iface}.gateway"
+
+    return 0
 }
 
 # Удаление маршрутизации для интерфейса
 remove_routing() {
     local iface="$1"
-    local table=$(get_routing_table "$iface")
+    local table
+    table=$(get_routing_table "$iface")
 
     log "Удаление маршрутизации для интерфейса $iface"
 
-    # Читаем сохранённый IP если есть
     local ip=""
     if [ -f "${STATE_DIR}/${iface}.ip" ]; then
         ip=$(cat "${STATE_DIR}/${iface}.ip")
     fi
 
-    # Удаляем правила маршрутизации
     if [ -n "$ip" ]; then
         ip rule del from "$ip" 2>/dev/null || true
         log "Удалено правило: from $ip"
     fi
 
-    # Очищаем таблицу маршрутизации
     ip route flush table "$table" 2>/dev/null || true
     log "Очищена таблица: $table"
 
-    # Удаляем файлы состояния
     rm -f "${STATE_DIR}/${iface}".* 2>/dev/null || true
 }
 
 # Обновление конфигурации 3proxy
+# BUG-1: flock защищает от race condition при одновременном подключении модемов
 update_3proxy_config() {
     local iface="$1"
     local ip="$2"
-    local subnet=$(get_subnet "$ip")
-    local http_port=$(get_http_proxy_port "$subnet")
-    local socks_port=$(get_socks_proxy_port "$subnet")
+    local subnet
+    subnet=$(get_subnet "$ip")
+    local http_port
+    http_port=$(get_http_proxy_port "$subnet")
+    local socks_port
+    socks_port=$(get_socks_proxy_port "$subnet")
     local expected_ip="${subnet}100"
 
     if [ "$http_port" = "0" ] || [ "$socks_port" = "0" ]; then
@@ -163,51 +177,47 @@ update_3proxy_config() {
         return 0
     fi
 
-    # Проверяем, совпадает ли IP со стандартным (192.168.X.100)
     if [ "$ip" = "$expected_ip" ]; then
         log "IP $ip соответствует ожидаемому, конфигурация 3proxy уже актуальна (не требует перезагрузки)"
-
-        # Сохраняем информацию о портах
         echo "$http_port" > "${STATE_DIR}/${iface}.http_port"
         echo "$socks_port" > "${STATE_DIR}/${iface}.socks_port"
-
         return 0
     fi
 
-    # IP отличается от стандартного - обновляем конфигурацию
     log "IP $ip отличается от ожидаемого $expected_ip - обновление конфигурации 3proxy..."
 
-    # Создаём временный файл
-    local temp_cfg=$(mktemp)
+    (
+        flock -x -w 30 200 || {
+            log "ОШИБКА: Таймаут ожидания блокировки конфига 3proxy (30с)"
+            exit 1
+        }
 
-    # Удаляем старые записи для этой подсети
-    grep -vE "\-e${subnet}[0-9]+" "$PROXY_CFG" > "$temp_cfg" || true
+        local temp_cfg
+        temp_cfg=$(mktemp)
 
-    # Добавляем новые записи (HTTP и SOCKS) с актуальным IP
-    echo "proxy -n -a -p${http_port} -e${ip}" >> "$temp_cfg"
-    echo "socks -n -a -p${socks_port} -e${ip}" >> "$temp_cfg"
+        grep -vE "\-e${subnet}[0-9]+" "$PROXY_CFG" > "$temp_cfg" || true
+        echo "proxy -n -a -p${http_port} -e${ip}" >> "$temp_cfg"
+        echo "socks -n -a -p${socks_port} -e${ip}" >> "$temp_cfg"
 
-    # Заменяем конфигурацию
-    mv "$temp_cfg" "$PROXY_CFG"
-    chmod 644 "$PROXY_CFG"
+        mv "$temp_cfg" "$PROXY_CFG"
+        chmod 644 "$PROXY_CFG"
+    ) 200>"$LOCK_FILE" || return 1
 
     log "3proxy конфигурация обновлена: proxy -p${http_port} -e${ip}, socks -p${socks_port} -e${ip}"
 
-    # Сохраняем информацию о портах
     echo "$http_port" > "${STATE_DIR}/${iface}.http_port"
     echo "$socks_port" > "${STATE_DIR}/${iface}.socks_port"
-
-    # Флаг для перезагрузки прокси
     echo "1" > "${STATE_DIR}/${iface}.needs_reload"
 }
 
 # Удаление из конфигурации 3proxy
+# BUG-1: flock для защиты от race condition
+# FUNC-1: возвращает 0 если конфиг изменился, 1 если нет
 remove_from_3proxy_config() {
     local iface="$1"
 
     log "Удаление из 3proxy конфигурации"
 
-    # Читаем подсеть из сохранённого состояния
     local subnet=""
     if [ -f "${STATE_DIR}/${iface}.subnet" ]; then
         subnet=$(cat "${STATE_DIR}/${iface}.subnet")
@@ -215,20 +225,41 @@ remove_from_3proxy_config() {
 
     if [ -z "$subnet" ]; then
         log "Подсеть не найдена в сохранённом состоянии, пропускаем удаление из 3proxy"
-        return 0
+        return 1
     fi
 
-    # Создаём временный файл
-    local temp_cfg=$(mktemp)
+    (
+        flock -x -w 30 200 || {
+            log "ОШИБКА: Таймаут ожидания блокировки конфига 3proxy (30с)"
+            exit 1
+        }
 
-    # Удаляем записи для этой подсети
-    grep -vE "\-e${subnet}[0-9]+" "$PROXY_CFG" > "$temp_cfg" || true
+        local temp_cfg
+        temp_cfg=$(mktemp)
 
-    # Заменяем конфигурацию
-    mv "$temp_cfg" "$PROXY_CFG"
-    chmod 644 "$PROXY_CFG"
+        grep -vE "\-e${subnet}[0-9]+" "$PROXY_CFG" > "$temp_cfg" || true
+
+        if cmp -s "$PROXY_CFG" "$temp_cfg"; then
+            rm -f "$temp_cfg"
+            exit 2  # нет изменений
+        fi
+
+        mv "$temp_cfg" "$PROXY_CFG"
+        chmod 644 "$PROXY_CFG"
+    ) 200>"$LOCK_FILE"
+
+    local exit_code=$?
+
+    if [ $exit_code -eq 2 ]; then
+        log "Записей для подсети ${subnet}x в конфиге не найдено, перезапуск не нужен"
+        return 1
+    elif [ $exit_code -ne 0 ]; then
+        log "ОШИБКА: Не удалось обновить конфигурацию 3proxy"
+        return 1
+    fi
 
     log "Удалено из 3proxy конфигурации: подсеть ${subnet}x"
+    return 0
 }
 
 # Перезапуск 3proxy (OpenRC)
@@ -252,33 +283,42 @@ handle_add() {
     log "========================================="
     log "Событие: ADD интерфейса $iface"
 
-    # Ждём получения IP-адреса
     log "Ожидание получения IP-адреса..."
-    local ip=$(get_interface_ip "$iface")
+    local ip
+    ip=$(get_interface_ip "$iface")
 
     if [ -z "$ip" ]; then
-        log "ОШИБКА: Не удалось получить IP-адрес для $iface"
+        log "ОШИБКА: Не удалось получить IP-адрес для $iface за 30 секунд"
         return 1
     fi
 
     log "Получен IP-адрес: $ip"
 
-    # Проверяем, что это модемная подсеть (192.168.X.X, исключая 0 и 1)
-    local subnet=$(get_subnet "$ip")
-    local third_octet=$(echo "$subnet" | grep -oP '\d+\.\d+\.\K\d+')
+    # BUG-2: Проверяем полный адрес — модемы E3372 всегда используют 192.168.x.x.
+    # Проверка только третьего октета недостаточна: локальная сеть 192.168.2.x
+    # или 10.20.2.x прошла бы фильтр с третьим октетом = 2.
+    local first_octet second_octet third_octet
+    first_octet=$(echo "$ip" | cut -d'.' -f1)
+    second_octet=$(echo "$ip" | cut -d'.' -f2)
+    third_octet=$(echo "$ip" | cut -d'.' -f3)
 
-    if [ "$third_octet" = "0" ] || [ "$third_octet" = "1" ]; then
-        log "Подсеть ${subnet}x - системная, пропускаем настройку"
+    if [ "$first_octet" != "192" ] || [ "$second_octet" != "168" ]; then
+        log "IP $ip не является адресом модема (ожидается 192.168.x.x), пропускаем"
         return 0
     fi
 
-    # Настраиваем маршрутизацию
-    setup_routing "$iface" "$ip"
+    if [ "$third_octet" = "0" ] || [ "$third_octet" = "1" ]; then
+        log "Подсеть 192.168.${third_octet}.x зарезервирована для локальной сети, пропускаем"
+        return 0
+    fi
 
-    # Обновляем конфигурацию 3proxy
+    if ! setup_routing "$iface" "$ip"; then
+        log "ОШИБКА: Не удалось настроить маршрутизацию для $iface"
+        return 1
+    fi
+
     update_3proxy_config "$iface" "$ip"
 
-    # Перезапускаем 3proxy только если требуется
     if [ -f "${STATE_DIR}/${iface}.needs_reload" ]; then
         restart_3proxy
         rm -f "${STATE_DIR}/${iface}.needs_reload"
@@ -298,14 +338,14 @@ handle_remove() {
     log "========================================="
     log "Событие: REMOVE интерфейса $iface"
 
-    # Удаляем маршрутизацию
     remove_routing "$iface"
 
-    # Удаляем из конфигурации 3proxy
-    remove_from_3proxy_config "$iface"
-
-    # Перезапускаем 3proxy
-    restart_3proxy
+    # FUNC-1: Перезапускаем 3proxy только если конфиг реально изменился
+    if remove_from_3proxy_config "$iface"; then
+        restart_3proxy
+    else
+        log "Конфигурация 3proxy не изменилась, перезапуск пропущен"
+    fi
 
     log "Интерфейс $iface успешно удалён из конфигурации"
     log "========================================="
