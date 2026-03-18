@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "server",
+  "dolt_database": "rasperberry_pi_modem_hub",
+  "project_id": "42bc1393-491c-4c2f-a166-a1dad4a86bbd"
+}
