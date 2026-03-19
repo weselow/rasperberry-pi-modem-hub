@@ -347,15 +347,21 @@ enable_service() {
         systemctl start 3proxy.service
     fi
 
-    sleep 2
+    # Ждём запуска с таймаутом (на медленном Pi может занять больше 2 секунд)
+    local max_wait=15
+    local waited=0
+    while [ $waited -lt $max_wait ]; do
+        if systemctl is-active --quiet 3proxy.service; then
+            log_info "Сервис 3proxy успешно запущен (за ${waited}с)"
+            return 0
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
 
-    if systemctl is-active --quiet 3proxy.service; then
-        log_info "Сервис 3proxy успешно запущен"
-    else
-        log_error "Не удалось запустить сервис 3proxy"
-        systemctl status 3proxy.service
-        exit 1
-    fi
+    log_error "Не удалось запустить сервис 3proxy за ${max_wait}с"
+    systemctl status 3proxy.service
+    exit 1
 }
 
 # Главная функция
