@@ -72,6 +72,38 @@ main() {
         fi
     done
 
+    # Верификация: пересоздание state-файлов для активных интерфейсов без state
+    # При flap (remove+add) handler может удалить state, а повторный add — не создать
+    log "Проверка state-файлов..."
+    local restored=0
+    for iface in $(ip -o addr show | grep -oP '(eth[1-9][0-9]?|usb[0-9][0-9]?)(?=:)' | sort -u); do
+        local ip
+        ip=$(ip -4 addr show "$iface" 2>/dev/null | grep -oP '(?<=inet\s)\d+\.\d+\.\d+\.\d+' | head -n1)
+        [ -z "$ip" ] && continue
+
+        # Пропускаем не-модемные адреса (не 192.168.x.x)
+        echo "$ip" | grep -qP '^192\.168\.' || continue
+
+        # Пропускаем системные подсети (192.168.0.x, 192.168.1.x)
+        local subnet
+        subnet=$(echo "$ip" | grep -oP '\d+\.\d+\.\d+\.')
+        local third_octet
+        third_octet=$(echo "$subnet" | grep -oP '\d+\.\d+\.\K\d+')
+        [ "$third_octet" = "0" ] || [ "$third_octet" = "1" ] && continue
+
+        # Проверяем наличие state-файлов — если .subnet отсутствует, пересоздаём
+        if [ ! -f "/var/run/modem-state/${iface}.subnet" ]; then
+            log "Пересоздание state-файлов для $iface (IP: $ip)"
+            echo "$ip" > "/var/run/modem-state/${iface}.ip"
+            echo "$subnet" > "/var/run/modem-state/${iface}.subnet"
+            echo "${subnet}1" > "/var/run/modem-state/${iface}.gateway"
+            restored=$((restored + 1))
+        fi
+    done
+    if [ $restored -gt 0 ]; then
+        log "Восстановлено state-файлов: $restored"
+    fi
+
     log "Синхронизация завершена: настроено=$configured, коллизий=$collisions, ошибок=$failed"
     log "========================================="
 

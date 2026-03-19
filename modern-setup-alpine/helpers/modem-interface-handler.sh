@@ -307,6 +307,13 @@ handle_add() {
 
     # Проверяем, что это модемная подсеть (192.168.X.X, исключая 0 и 1)
     local subnet=$(get_subnet "$ip")
+
+    # Пропускаем не-модемные адреса (link-local 169.254.x.x, и прочие не 192.168.x.x)
+    if ! echo "$ip" | grep -qP '^192\.168\.'; then
+        log "IP $ip не является модемным адресом (не 192.168.x.x), пропускаем настройку"
+        return 0
+    fi
+
     local third_octet=$(echo "$subnet" | grep -oP '\d+\.\d+\.\K\d+')
 
     if [ "$third_octet" = "0" ] || [ "$third_octet" = "1" ]; then
