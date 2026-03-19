@@ -34,13 +34,20 @@ main() {
 
     local configured=0
     local failed=0
+    local collisions=0
 
     # Синхронизируем eth интерфейсы
     for iface in $(ip -o link show | grep -oP 'eth[1-9][0-9]?(?=:)' | grep -E 'eth([1-9]|1[0-9]|20)'); do
         if ip addr show "$iface" 2>/dev/null | grep -q 'inet '; then
             log "Настройка интерфейса: $iface"
             if "$HANDLER" add "$iface" >> "$LOGFILE" 2>&1; then
-                configured=$((configured + 1))
+                # Проверяем, был ли интерфейс отклонён из-за коллизии
+                if [ -f "/var/run/modem-state/${iface}.collision" ]; then
+                    collisions=$((collisions + 1))
+                    log "Интерфейс $iface: коллизия портов (маршрутизация настроена, прокси пропущен)"
+                else
+                    configured=$((configured + 1))
+                fi
             else
                 log "ОШИБКА: Не удалось настроить $iface"
                 failed=$((failed + 1))
@@ -53,7 +60,13 @@ main() {
         if ip addr show "$iface" 2>/dev/null | grep -q 'inet '; then
             log "Настройка интерфейса: $iface"
             if "$HANDLER" add "$iface" >> "$LOGFILE" 2>&1; then
-                configured=$((configured + 1))
+                # Проверяем, был ли интерфейс отклонён из-за коллизии
+                if [ -f "/var/run/modem-state/${iface}.collision" ]; then
+                    collisions=$((collisions + 1))
+                    log "Интерфейс $iface: коллизия портов (маршрутизация настроена, прокси пропущен)"
+                else
+                    configured=$((configured + 1))
+                fi
             else
                 log "ОШИБКА: Не удалось настроить $iface"
                 failed=$((failed + 1))
@@ -61,7 +74,7 @@ main() {
         fi
     done
 
-    log "Синхронизация завершена: настроено=$configured, ошибок=$failed"
+    log "Синхронизация завершена: настроено=$configured, коллизий=$collisions, ошибок=$failed"
     log "========================================="
 
     if [ $configured -eq 0 ] && [ $failed -eq 0 ]; then

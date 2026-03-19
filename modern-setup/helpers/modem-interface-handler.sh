@@ -87,6 +87,42 @@ get_socks_proxy_port() {
     fi
 }
 
+# Проверка коллизии портов — другой интерфейс уже занял эту подсеть
+# Возвращает 0 если коллизий нет, 1 если обнаружена коллизия
+check_port_collision() {
+    local iface="$1"
+    local subnet="$2"
+
+    for subnet_file in "${STATE_DIR}"/*.subnet; do
+        [ -f "$subnet_file" ] || continue
+
+        # Извлекаем имя интерфейса из имени файла
+        local other_iface
+        other_iface=$(basename "$subnet_file" .subnet)
+
+        # Пропускаем свой же интерфейс
+        [ "$other_iface" = "$iface" ] && continue
+
+        # Читаем подсеть другого интерфейса
+        local other_subnet
+        other_subnet=$(cat "$subnet_file" 2>/dev/null) || continue
+
+        if [ "$other_subnet" = "$subnet" ]; then
+            local http_port
+            http_port=$(get_http_proxy_port "$subnet")
+            local socks_port
+            socks_port=$(get_socks_proxy_port "$subnet")
+            log "ОШИБКА: Коллизия портов! Подсеть ${subnet}x уже используется интерфейсом $other_iface (HTTP:$http_port, SOCKS:$socks_port)"
+            logger -t "$SCRIPT_NAME" -p daemon.err "Коллизия портов: $iface и $other_iface в подсети ${subnet}x (HTTP:$http_port, SOCKS:$socks_port)"
+            # Сохраняем маркер коллизии
+            echo "$other_iface" > "${STATE_DIR}/${iface}.collision"
+            return 1
+        fi
+    done
+
+    return 0
+}
+
 # Получение имени таблицы маршрутизации
 get_routing_table() {
     local iface="$1"
@@ -316,6 +352,16 @@ handle_add() {
     # Настраиваем маршрутизацию
     setup_routing "$iface" "$ip"
 
+    # Проверяем коллизию портов перед настройкой прокси
+    if ! check_port_collision "$iface" "$subnet"; then
+        log "Пропуск настройки 3proxy для $iface из-за коллизии портов (маршрутизация настроена)"
+        log "========================================="
+        return 0
+    fi
+
+    # Удаляем маркер коллизии если был (подсеть теперь свободна)
+    rm -f "${STATE_DIR}/${iface}.collision"
+
     # Обновляем конфигурацию 3proxy
     update_3proxy_config "$iface" "$ip"
 
@@ -332,12 +378,34 @@ handle_add() {
     log "========================================="
 }
 
+# Проверка освобождения порта для интерфейсов с коллизией
+check_freed_collisions() {
+    local removed_iface="$1"
+
+    for collision_file in "${STATE_DIR}"/*.collision; do
+        [ -f "$collision_file" ] || continue
+
+        local blocking_iface
+        blocking_iface=$(cat "$collision_file" 2>/dev/null) || continue
+
+        if [ "$blocking_iface" = "$removed_iface" ]; then
+            local collided_iface
+            collided_iface=$(basename "$collision_file" .collision)
+            log "Порт освобождён: интерфейс $collided_iface может быть переконфигурирован (был заблокирован $removed_iface)"
+            logger -t "$SCRIPT_NAME" -p daemon.info "Порт освобождён: $collided_iface может быть переконфигурирован после удаления $removed_iface"
+        fi
+    done
+}
+
 # Обработка удаления интерфейса
 handle_remove() {
     local iface="$1"
 
     log "========================================="
     log "Событие: REMOVE интерфейса $iface"
+
+    # Проверяем, освобождает ли удаление порт для интерфейсов с коллизией
+    check_freed_collisions "$iface"
 
     # Удаляем маршрутизацию
     remove_routing "$iface"
