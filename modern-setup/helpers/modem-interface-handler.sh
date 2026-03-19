@@ -16,6 +16,7 @@ INTERFACE="$2"
 LOGFILE="/var/log/modem-handler.log"
 PROXY_CFG="/etc/3proxy/3proxy.cfg"
 STATE_DIR="/var/run/modem-state"
+LOCK_FILE="/var/lock/modem-handler.lock"
 
 # Создаём директорию для хранения состояний
 mkdir -p "$STATE_DIR"
@@ -129,11 +130,9 @@ remove_routing() {
 
     log "Удаление маршрутизации для интерфейса $iface"
 
-    # Читаем сохранённый IP если есть
+    # Читаем сохранённый IP если есть (атомарное чтение без TOCTOU)
     local ip=""
-    if [ -f "${STATE_DIR}/${iface}.ip" ]; then
-        ip=$(cat "${STATE_DIR}/${iface}.ip")
-    fi
+    ip=$(cat "${STATE_DIR}/${iface}.ip" 2>/dev/null) || true
 
     # Удаляем правила маршрутизации
     if [ -n "$ip" ]; then
@@ -177,19 +176,41 @@ update_3proxy_config() {
     # IP отличается от стандартного - обновляем конфигурацию
     log "IP $ip отличается от ожидаемого $expected_ip - обновление конфигурации 3proxy..."
 
+    # Проверяем существование конфига
+    if [ ! -f "$PROXY_CFG" ]; then
+        log "ОШИБКА: Конфигурация $PROXY_CFG не найдена"
+        return 1
+    fi
+
     # Создаём временный файл
     local temp_cfg=$(mktemp)
+    trap "rm -f '$temp_cfg'" RETURN
 
     # Удаляем старые записи для этой подсети
-    grep -vE "\-e${subnet}[0-9]+" "$PROXY_CFG" > "$temp_cfg" || true
+    grep -vE "\-e${subnet}[0-9]+" "$PROXY_CFG" > "$temp_cfg"
+    local grep_status=$?
+
+    # grep возвращает 1 если нет совпадений (все строки прошли) — это OK
+    # grep возвращает >1 при реальной ошибке
+    if [ $grep_status -gt 1 ]; then
+        log "ОШИБКА: grep завершился с ошибкой ($grep_status) при обновлении конфига"
+        return 1
+    fi
 
     # Добавляем новые записи (HTTP и SOCKS) с актуальным IP
     echo "proxy -n -a -p${http_port} -e${ip}" >> "$temp_cfg"
     echo "socks -n -a -p${socks_port} -e${ip}" >> "$temp_cfg"
 
+    # Проверяем что результат непустой (содержит базовые директивы)
+    if ! grep -q "^nserver\|^auth\|^users" "$temp_cfg"; then
+        log "ОШИБКА: Результирующий конфиг повреждён (отсутствуют базовые директивы), отмена обновления"
+        return 1
+    fi
+
     # Заменяем конфигурацию
     mv "$temp_cfg" "$PROXY_CFG"
     chmod 644 "$PROXY_CFG"
+    trap - RETURN
 
     log "3proxy конфигурация обновлена: proxy -p${http_port} -e${ip}, socks -p${socks_port} -e${ip}"
 
@@ -207,26 +228,46 @@ remove_from_3proxy_config() {
 
     log "Удаление из 3proxy конфигурации"
 
-    # Читаем подсеть из сохранённого состояния
+    # Читаем подсеть из сохранённого состояния (атомарное чтение без TOCTOU)
     local subnet=""
-    if [ -f "${STATE_DIR}/${iface}.subnet" ]; then
-        subnet=$(cat "${STATE_DIR}/${iface}.subnet")
-    fi
+    subnet=$(cat "${STATE_DIR}/${iface}.subnet" 2>/dev/null) || true
 
     if [ -z "$subnet" ]; then
         log "Подсеть не найдена в сохранённом состоянии, пропускаем удаление из 3proxy"
         return 0
     fi
 
+    # Проверяем существование конфига
+    if [ ! -f "$PROXY_CFG" ]; then
+        log "ОШИБКА: Конфигурация $PROXY_CFG не найдена"
+        return 1
+    fi
+
     # Создаём временный файл
     local temp_cfg=$(mktemp)
+    trap "rm -f '$temp_cfg'" RETURN
 
     # Удаляем записи для этой подсети
-    grep -vE "\-e${subnet}[0-9]+" "$PROXY_CFG" > "$temp_cfg" || true
+    grep -vE "\-e${subnet}[0-9]+" "$PROXY_CFG" > "$temp_cfg"
+    local grep_status=$?
+
+    # grep возвращает 1 если нет совпадений (все строки прошли) — это OK
+    # grep возвращает >1 при реальной ошибке
+    if [ $grep_status -gt 1 ]; then
+        log "ОШИБКА: grep завершился с ошибкой ($grep_status) при удалении из конфига"
+        return 1
+    fi
+
+    # Проверяем что результат непустой (содержит базовые директивы)
+    if ! grep -q "^nserver\|^auth\|^users" "$temp_cfg"; then
+        log "ОШИБКА: Результирующий конфиг повреждён (отсутствуют базовые директивы), отмена удаления"
+        return 1
+    fi
 
     # Заменяем конфигурацию
     mv "$temp_cfg" "$PROXY_CFG"
     chmod 644 "$PROXY_CFG"
+    trap - RETURN
 
     log "Удалено из 3proxy конфигурации: подсеть ${subnet}x"
 }
@@ -318,18 +359,44 @@ main() {
         exit 1
     fi
 
+    # Валидация имени интерфейса (8ve)
+    if ! echo "$INTERFACE" | grep -qE '^(eth[1-9]|eth1[0-9]|eth20|usb[0-9]|usb1[0-9]|usb20)$'; then
+        log "ОШИБКА: Недопустимое имя интерфейса: $INTERFACE"
+        exit 1
+    fi
+
+    # Захватываем блокировку (ждём до 60 секунд)
+    exec 200>"$LOCK_FILE"
+    if ! flock -w 60 200; then
+        log "ОШИБКА: Не удалось захватить блокировку за 60 секунд"
+        exit 1
+    fi
+    log "Блокировка захвачена"
+
+    local exit_code=0
     case "$ACTION" in
         "add")
-            handle_add "$INTERFACE"
+            handle_add "$INTERFACE" || exit_code=$?
             ;;
         "remove")
-            handle_remove "$INTERFACE"
+            handle_remove "$INTERFACE" || exit_code=$?
             ;;
         *)
             log "ОШИБКА: Неизвестное действие: $ACTION"
-            exit 1
+            exit_code=1
             ;;
     esac
+
+    # Блокировка автоматически освобождается при закрытии fd
+    exec 200>&-
+
+    # Логируем в syslog при ошибке (p2a)
+    if [ $exit_code -ne 0 ]; then
+        log "ОШИБКА: Обработка $ACTION для $INTERFACE завершилась с кодом $exit_code"
+        logger -t "$SCRIPT_NAME" -p daemon.err "ОШИБКА: $ACTION $INTERFACE завершился с кодом $exit_code"
+    fi
+
+    return $exit_code
 }
 
 main "$@"
