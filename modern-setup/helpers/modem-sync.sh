@@ -23,6 +23,11 @@ main() {
         exit 1
     fi
 
+    # Ждём завершения обработки udev-событий, чтобы избежать race condition
+    log "Ожидание завершения udev-событий..."
+    udevadm settle --timeout=30 2>/dev/null || log "Предупреждение: udevadm settle завершился по таймауту"
+    log "udev-события обработаны"
+
     local configured=0
     local failed=0
 
