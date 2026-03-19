@@ -4,7 +4,11 @@
 # Вызывается systemd service при старте системы
 #
 
-set -e
+set -euo pipefail
+
+# Отключаем set -e для основной логики — ошибка одного модема не должна
+# прерывать настройку остальных. Контроль ошибок через переменную failed.
+set +e
 
 SCRIPT_NAME="modem-sync"
 LOGFILE="/var/log/modem-handler.log"
@@ -36,10 +40,10 @@ main() {
         if ip addr show "$iface" 2>/dev/null | grep -q 'inet '; then
             log "Настройка интерфейса: $iface"
             if "$HANDLER" add "$iface" >> "$LOGFILE" 2>&1; then
-                ((configured++))
+                configured=$((configured + 1))
             else
                 log "ОШИБКА: Не удалось настроить $iface"
-                ((failed++))
+                failed=$((failed + 1))
             fi
         fi
     done
@@ -49,10 +53,10 @@ main() {
         if ip addr show "$iface" 2>/dev/null | grep -q 'inet '; then
             log "Настройка интерфейса: $iface"
             if "$HANDLER" add "$iface" >> "$LOGFILE" 2>&1; then
-                ((configured++))
+                configured=$((configured + 1))
             else
                 log "ОШИБКА: Не удалось настроить $iface"
-                ((failed++))
+                failed=$((failed + 1))
             fi
         fi
     done
