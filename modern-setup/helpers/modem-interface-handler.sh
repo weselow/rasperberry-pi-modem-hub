@@ -108,6 +108,12 @@ check_port_collision() {
         other_subnet=$(cat "$subnet_file" 2>/dev/null) || continue
 
         if [ "$other_subnet" = "$subnet" ]; then
+            # Проверяем, существует ли блокирующий интерфейс
+            if ! ip link show "$other_iface" >/dev/null 2>&1; then
+                log "Обнаружен устаревший state-файл для $other_iface (интерфейс не существует), очистка..."
+                rm -f "${STATE_DIR}/${other_iface}".* 2>/dev/null || true
+                continue
+            fi
             local http_port
             http_port=$(get_http_proxy_port "$subnet")
             local socks_port
@@ -356,7 +362,7 @@ handle_add() {
     if ! check_port_collision "$iface" "$subnet"; then
         log "Пропуск настройки 3proxy для $iface из-за коллизии портов (маршрутизация настроена)"
         log "========================================="
-        return 0
+        return 2
     fi
 
     # Удаляем маркер коллизии если был (подсеть теперь свободна)
@@ -458,8 +464,8 @@ main() {
     # Блокировка автоматически освобождается при закрытии fd
     exec 200>&-
 
-    # Логируем в syslog при ошибке (p2a)
-    if [ $exit_code -ne 0 ]; then
+    # Логируем в syslog при ошибке (p2a), код 2 = коллизия портов (не ошибка)
+    if [ $exit_code -ne 0 ] && [ $exit_code -ne 2 ]; then
         log "ОШИБКА: Обработка $ACTION для $INTERFACE завершилась с кодом $exit_code"
         logger -t "$SCRIPT_NAME" -p daemon.err "ОШИБКА: $ACTION $INTERFACE завершился с кодом $exit_code"
     fi

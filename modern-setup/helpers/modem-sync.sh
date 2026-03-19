@@ -40,16 +40,15 @@ main() {
     for iface in $(ip -o link show | grep -oP 'eth[1-9][0-9]?(?=:)' | grep -E 'eth([1-9]|1[0-9]|20)'); do
         if ip addr show "$iface" 2>/dev/null | grep -q 'inet '; then
             log "Настройка интерфейса: $iface"
-            if "$HANDLER" add "$iface" >> "$LOGFILE" 2>&1; then
-                # Проверяем, был ли интерфейс отклонён из-за коллизии
-                if [ -f "/var/run/modem-state/${iface}.collision" ]; then
-                    collisions=$((collisions + 1))
-                    log "Интерфейс $iface: коллизия портов (маршрутизация настроена, прокси пропущен)"
-                else
-                    configured=$((configured + 1))
-                fi
+            local handler_exit=0
+            "$HANDLER" add "$iface" >> "$LOGFILE" 2>&1 || handler_exit=$?
+            if [ $handler_exit -eq 0 ]; then
+                configured=$((configured + 1))
+            elif [ $handler_exit -eq 2 ]; then
+                collisions=$((collisions + 1))
+                log "Интерфейс $iface: коллизия портов (маршрутизация настроена, прокси пропущен)"
             else
-                log "ОШИБКА: Не удалось настроить $iface"
+                log "ОШИБКА: Не удалось настроить $iface (код: $handler_exit)"
                 failed=$((failed + 1))
             fi
         fi
@@ -59,16 +58,15 @@ main() {
     for iface in $(ip -o link show | grep -oP 'usb[0-9][0-9]?(?=:)' | grep -E 'usb([0-9]|1[0-9]|20)'); do
         if ip addr show "$iface" 2>/dev/null | grep -q 'inet '; then
             log "Настройка интерфейса: $iface"
-            if "$HANDLER" add "$iface" >> "$LOGFILE" 2>&1; then
-                # Проверяем, был ли интерфейс отклонён из-за коллизии
-                if [ -f "/var/run/modem-state/${iface}.collision" ]; then
-                    collisions=$((collisions + 1))
-                    log "Интерфейс $iface: коллизия портов (маршрутизация настроена, прокси пропущен)"
-                else
-                    configured=$((configured + 1))
-                fi
+            local handler_exit=0
+            "$HANDLER" add "$iface" >> "$LOGFILE" 2>&1 || handler_exit=$?
+            if [ $handler_exit -eq 0 ]; then
+                configured=$((configured + 1))
+            elif [ $handler_exit -eq 2 ]; then
+                collisions=$((collisions + 1))
+                log "Интерфейс $iface: коллизия портов (маршрутизация настроена, прокси пропущен)"
             else
-                log "ОШИБКА: Не удалось настроить $iface"
+                log "ОШИБКА: Не удалось настроить $iface (код: $handler_exit)"
                 failed=$((failed + 1))
             fi
         fi
